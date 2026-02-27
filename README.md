@@ -161,3 +161,12 @@ Outputs:
 - `reports/sim_hourly_v1/sim_hourly_v1_counterfactual_plot.png`
 - `reports/sim_hourly_v1/sim_hourly_v1_counterfactual_summary.json`
 - `reports/sim_hourly_v1/sim_hourly_v1_counterfactual_summary.md`
+
+### Simulator hardening run (trust diagnostics + variant search)
+
+```powershell
+python CareAI/scripts/sim/harden_hourly_v1.py --config CareAI/configs/sim_hourly_hardening_v1.yaml --stop-on-pass
+```
+
+Outputs are written to timestamped run folders:
+- `reports/sim_hourly_v1/hardening_runs/<run_id>/`

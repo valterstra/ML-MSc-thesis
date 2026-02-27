@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 
 @dataclass(frozen=True)
@@ -32,21 +34,42 @@ def fit_readmission_model(episode_df: pd.DataFrame, cfg: dict[str, Any]) -> Read
     if int(train.sum()) == 0:
         train = pd.Series([True] * len(work))
     mcfg = cfg["readmission_model"]
-    pipe = Pipeline(
-        [
-            ("imp", SimpleImputer(strategy="median")),
-            (
-                "clf",
-                LogisticRegression(
-                    max_iter=int(mcfg.get("max_iter", 2000)),
-                    C=float(mcfg.get("c", 1.0)),
-                    random_state=int(mcfg.get("random_state", 42)),
-                ),
+    steps: list[tuple[str, Any]] = [("imp", SimpleImputer(strategy="median"))]
+    if bool(mcfg.get("use_scaling", False)):
+        steps.append(("scaler", StandardScaler()))
+    steps.append(
+        (
+            "clf",
+            LogisticRegression(
+                max_iter=int(mcfg.get("max_iter", 2000)),
+                C=float(mcfg.get("c", 1.0)),
+                random_state=int(mcfg.get("random_state", 42)),
             ),
-        ]
+        )
     )
+    pipe = Pipeline(steps)
     pipe.fit(X[train], y[train])
     return ReadmissionModel(pipe=pipe, feature_cols=feature_cols)
+
+
+def evaluate_readmission_model(model: ReadmissionModel, episode_df: pd.DataFrame, split: str = "valid") -> dict[str, float | int | None]:
+    work = episode_df.copy()
+    if "split" not in work.columns or "readmit_30d" not in work.columns:
+        return {"n": 0, "auroc": None, "auprc": None, "brier": None}
+    mask = work["split"] == split
+    if int(mask.sum()) == 0:
+        return {"n": 0, "auroc": None, "auprc": None, "brier": None}
+    X = work.loc[mask, model.feature_cols].apply(pd.to_numeric, errors="coerce")
+    y = pd.to_numeric(work.loc[mask, "readmit_30d"], errors="coerce").fillna(0).astype(int).to_numpy()
+    probs = model.pipe.predict_proba(X)[:, 1]
+    if len(np.unique(y)) < 2:
+        auroc = None
+        auprc = float(average_precision_score(y, probs))
+    else:
+        auroc = float(roc_auc_score(y, probs))
+        auprc = float(average_precision_score(y, probs))
+    brier = float(brier_score_loss(y, probs))
+    return {"n": int(mask.sum()), "auroc": auroc, "auprc": auprc, "brier": brier}
 
 
 def summarize_trajectory_for_readmit(states: list[np.ndarray], actions: list[np.ndarray], state_cols: list[str]) -> dict[str, float]:
@@ -84,4 +107,3 @@ def summarize_trajectory_for_readmit(states: list[np.ndarray], actions: list[np.
             }
         )
     return out
-
