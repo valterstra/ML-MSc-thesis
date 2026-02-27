@@ -1,0 +1,2 @@
+"""Contract and validation helpers."""
+

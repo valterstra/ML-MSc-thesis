@@ -1,0 +1,30 @@
+input:
+  stage02_path: ../../Yuyang-Clean-Rewrite/mimic/pipeline_v2/data/02_cohort_lace.csv
+
+output:
+  transitions_full_path: ../data/processed/transitions_v1_1.csv
+  transitions_sample_path: ../data/processed/transitions_v1_1_sample2pct.csv
+  manifest_path: ../data/processed/manifest_transition_v1_1.json
+  report_dir: ../reports/transition_v1_1
+
+sampling:
+  fraction: 0.02
+  seed: 42
+
+horizon:
+  readmit_days: 30
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+action:
+  mode: discharge_intensity_v1
+  mapping_version: v1
+  emit_raw_source: true
+
+schema:
+  version: transition_v1_1
+  source_dataset: pipeline_v2_stage02

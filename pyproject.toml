@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "careai"
+version = "0.1.0"
+description = "CARE-AI temporal transition dataset tooling"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.0",
+  "PyYAML>=6.0",
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "scikit-learn>=1.3",
+  "statsmodels>=0.14",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

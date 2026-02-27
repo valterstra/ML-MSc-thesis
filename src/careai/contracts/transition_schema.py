@@ -1,0 +1,52 @@
+"""Transition schema constants for v1."""
+
+from __future__ import annotations
+
+REQUIRED_INPUT_STAGE02_COLUMNS = [
+    "subject_id",
+    "hadm_id",
+    "admittime",
+    "dischtime",
+    "admission_type",
+    "discharge_location",
+    "anchor_age",
+    "Length",
+    "Acuity",
+    "Comorbidity",
+    "LACE",
+    "labevents",
+]
+
+REQUIRED_TRANSITION_COLUMNS = [
+    "transition_id",
+    "patient_id",
+    "index_hadm_id",
+    "t",
+    "index_admittime",
+    "index_dischtime",
+    "next_hadm_id",
+    "next_admittime",
+    "delta_days_to_next_admit",
+    "within_30d_next_admit",
+    "done",
+    "a_t",
+    "a_t_source",
+    "a_t_raw_discharge_location",
+    "s_t_length",
+    "s_t_acuity",
+    "s_t_comorbidity",
+    "s_t_lace",
+    "s_t_physical_status",
+    "s_t_age",
+    "s_t_admission_type",
+    "s_t_discharge_location",
+    "s_t1_length",
+    "s_t1_acuity",
+    "s_t1_comorbidity",
+    "s_t1_lace",
+    "split",
+    "sample_tag",
+    "source_dataset",
+    "schema_version",
+    "build_timestamp_utc",
+]

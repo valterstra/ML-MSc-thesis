@@ -1,0 +1,38 @@
+input:
+  transitions_v2_path: ../data/processed/transitions_v2_multi.csv
+
+output:
+  long_table_path: ../data/processed/longitudinal_v1_long.csv
+  tensor_dir: ../data/processed/longitudinal_v1_tensor
+  qa_report_dir: ../reports/longitudinal_v1
+
+features:
+  state_numeric:
+    - s_t_lace
+    - s_t_age
+    - s_t_comorbidity
+    - s_t_acuity
+    - s_t_length
+    - s_t_physical_status
+
+actions:
+  mapping:
+    A_LOW_SUPPORT: 0
+    A_HIGH_SUPPORT: 1
+    A_TERMINAL: 2
+    A_UNKNOWN: 3
+  padding_id: -1
+
+split:
+  mapping:
+    train: 0
+    valid: 1
+    test: 2
+
+dtype:
+  x_state: float32
+  m_valid: uint8
+  a_action: int16
+  y_next: uint8
+  d_done: uint8
+  split: int8
