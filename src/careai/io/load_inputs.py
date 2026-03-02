@@ -8,7 +8,22 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from careai.contracts.transition_schema import REQUIRED_INPUT_STAGE02_COLUMNS
+REQUIRED_STAGE02_COLUMNS = [
+    "subject_id",
+    "hadm_id",
+    "admittime",
+    "dischtime",
+    "admission_type",
+    "discharge_location",
+    "los_hospital",
+    "los_icu",
+    "num_icu_stays",
+    "ed_visits_365d",
+    "charlson_index",
+    "physical_status",
+    "lace_score",
+    "readmission_in_30_days",
+]
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -25,8 +40,7 @@ def resolve_from_config(config_path: Path, relative_or_abs: str) -> Path:
 
 def load_stage02(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, parse_dates=["admittime", "dischtime"])
-    missing = [c for c in REQUIRED_INPUT_STAGE02_COLUMNS if c not in df.columns]
+    missing = [c for c in REQUIRED_STAGE02_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f"Stage-02 input missing required columns: {missing}")
     return df
-

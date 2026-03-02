@@ -1,4 +1,4 @@
-"""Validation for transition datasets."""
+"""Validation for hourly transition datasets."""
 
 from __future__ import annotations
 
@@ -6,12 +6,22 @@ from typing import Any
 
 import pandas as pd
 
-from careai.actions.action_discharge_v1 import ACTION_SOURCE, ALLOWED_ACTIONS, A_TERMINAL, TERMINAL_LABELS
-
 from .transition_schema import REQUIRED_TRANSITION_COLUMNS
 
 
-def validate_transition_contract(df: pd.DataFrame) -> dict[str, Any]:
+ALLOWED_ACTIONS = {
+    "A_NONE",
+    "A_VASO",
+    "A_VENT",
+    "A_CRRT",
+    "A_VASO_VENT",
+    "A_VASO_CRRT",
+    "A_VENT_CRRT",
+    "A_VASO_VENT_CRRT",
+}
+
+
+def validate_transition_contract(df: pd.DataFrame, sofa_jump_threshold: int = 2) -> dict[str, Any]:
     errors: list[str] = []
 
     missing = [c for c in REQUIRED_TRANSITION_COLUMNS if c not in df.columns]
@@ -21,48 +31,32 @@ def validate_transition_contract(df: pd.DataFrame) -> dict[str, Any]:
     if "transition_id" in df.columns and df["transition_id"].duplicated().any():
         errors.append("transition_id is not unique")
 
-    if "done" in df.columns and not (df["done"] == 1).all():
-        errors.append("done must be 1 for all rows in v1")
+    if "a_t" in df.columns and (~df["a_t"].isin(ALLOWED_ACTIONS)).any():
+        errors.append(f"a_t contains invalid values. Allowed={sorted(ALLOWED_ACTIONS)}")
 
-    if "t" in df.columns and not (df["t"] == 0).all():
-        errors.append("t must be 0 for all rows in v1")
+    for col in ["a_t_vaso", "a_t_vent", "a_t_crrt", "y_t1", "done"]:
+        if col in df.columns and (~df[col].isin([0, 1])).any():
+            errors.append(f"{col} must be in {{0,1}}")
 
-    if "within_30d_next_admit" in df.columns:
-        bad = ~df["within_30d_next_admit"].isin([0, 1])
+    if all(c in df.columns for c in ["done", "s_t1_sofa"]):
+        bad = (df["done"] == 1) & df["s_t1_sofa"].notna()
         if bad.any():
-            errors.append("within_30d_next_admit must be in {0,1}")
+            errors.append("done=1 rows must have null s_t1_* columns")
 
-    if "split" in df.columns:
-        bad = ~df["split"].isin(["train", "valid", "test"])
-        if bad.any():
-            errors.append("split must be one of train|valid|test")
+    if all(c in df.columns for c in ["s_t_sofa", "s_t1_sofa", "y_t1"]):
+        expected = ((df["s_t1_sofa"] - df["s_t_sofa"] >= float(sofa_jump_threshold)) & df["s_t1_sofa"].notna()).astype(int)
+        if not (expected == df["y_t1"]).all():
+            errors.append("y_t1 does not match sofa jump rule")
 
-    if "a_t" in df.columns:
-        bad = ~df["a_t"].isin(ALLOWED_ACTIONS)
-        if bad.any():
-            errors.append(f"a_t contains invalid values. Allowed={sorted(ALLOWED_ACTIONS)}")
+    if all(c in df.columns for c in ["episode_id", "episode_step"]):
+        grouped = df.sort_values(["episode_id", "episode_step"]).groupby("episode_id", sort=False)["episode_step"]
+        for _, s in grouped:
+            vals = s.to_list()
+            if vals != list(range(len(vals))):
+                errors.append("episode_step must start at 0 and increment by 1 within each episode_id")
+                break
 
-    if "a_t_source" in df.columns:
-        bad = df["a_t_source"] != ACTION_SOURCE
-        if bad.any():
-            errors.append(f"a_t_source must be {ACTION_SOURCE} for all rows")
+    if "split" in df.columns and (~df["split"].isin(["train", "valid", "test"])).any():
+        errors.append("split must be one of train|valid|test")
 
-    if "a_t" in df.columns and "a_t_raw_discharge_location" in df.columns:
-        is_terminal = df["a_t"] == A_TERMINAL
-        if is_terminal.any():
-            raw = df.loc[is_terminal, "a_t_raw_discharge_location"].fillna("")
-            bad = ~raw.isin(TERMINAL_LABELS)
-            if bad.any():
-                errors.append("A_TERMINAL rows must have raw discharge in {'DIED','HOSPICE'}")
-
-    if "delta_days_to_next_admit" in df.columns and "next_hadm_id" in df.columns:
-        bad = df["next_hadm_id"].notna() & df["delta_days_to_next_admit"].isna()
-        if bad.any():
-            errors.append("delta_days_to_next_admit cannot be null when next_hadm_id exists")
-
-    return {
-        "ok": len(errors) == 0,
-        "rows": int(len(df)),
-        "cols": int(len(df.columns)),
-        "errors": errors,
-    }
+    return {"ok": len(errors) == 0, "rows": int(len(df)), "cols": int(len(df.columns)), "errors": errors}

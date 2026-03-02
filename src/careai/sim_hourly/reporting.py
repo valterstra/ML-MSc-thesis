@@ -20,7 +20,7 @@ def build_summary(cfg: dict[str, Any], metrics: pd.DataFrame, n_train_rows: int,
 
 
 def summary_markdown(payload: dict[str, Any]) -> str:
-    lines = ["# Hourly Simulator v1 Summary", ""]
+    lines = ["# Hourly Simulator Summary", ""]
     lines.append(f"- train rows: {payload['n_train_rows']}")
     lines.append(f"- start rows: {payload['n_start_rows']}")
     lines.append(f"- max steps: {payload['max_steps']}")
@@ -34,4 +34,3 @@ def summary_markdown(payload: dict[str, Any]) -> str:
             f"len={row['mean_rollout_hours']:.2f}, term={row['termination_rate']:.3f}"
         )
     return "\n".join(lines) + "\n"
-

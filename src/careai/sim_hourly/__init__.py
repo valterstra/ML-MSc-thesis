@@ -1,2 +1,1 @@
-"""Hourly simulator v1 package."""
-
+"""Hourly simulator package."""

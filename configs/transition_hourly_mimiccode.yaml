@@ -1,0 +1,74 @@
+input:
+  mimiccode_repo_path: ../../external_repos_top3/mimic-code
+
+db:
+  host: localhost
+  port: 5432
+  name: mimic
+  user_env: PGUSER
+  password_env: PGPASSWORD
+  schemas:
+    hosp: mimiciv_hosp_typed
+    icu: mimiciv_icu
+    derived: mimiciv_derived
+
+concepts:
+  build_mode: required_subset
+  rebuild_existing: false
+
+cohort:
+  min_age: 18
+
+time:
+  hr_min: 0
+  hr_max: null
+
+state:
+  features_numeric:
+    - s_t_sofa
+    - s_t_mbp
+    - s_t_heart_rate
+    - s_t_resp_rate
+    - s_t_spo2
+    - s_t_gcs
+    - s_t_urine_output_rate
+    - s_t_oxygen_delivery
+    - s_t_creatinine
+    - s_t_bun
+    - s_t_age
+    - s_t_charlson
+
+action:
+  mapping_version: hourly_treatment
+  classes:
+    A_NONE: [0, 0, 0]
+    A_VASO: [1, 0, 0]
+    A_VENT: [0, 1, 0]
+    A_CRRT: [0, 0, 1]
+    A_VASO_VENT: [1, 1, 0]
+    A_VASO_CRRT: [1, 0, 1]
+    A_VENT_CRRT: [0, 1, 1]
+    A_VASO_VENT_CRRT: [1, 1, 1]
+
+outcome:
+  sofa_jump_threshold: 2
+
+output:
+  transitions_full_path: ../data/processed/transitions_hourly_mimiccode.csv
+  transitions_sample_path: ../data/processed/transitions_hourly_mimiccode_sample2pct.csv
+  manifest_path: ../data/processed/manifest_transition_hourly_mimiccode.json
+  report_dir: ../reports/transition_hourly_mimiccode
+
+sampling:
+  fraction: 0.02
+  seed: 42
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+schema:
+  version: transition_hourly_mimiccode
+  source_dataset: mimiciv_derived_hourly

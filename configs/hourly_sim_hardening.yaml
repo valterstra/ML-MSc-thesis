@@ -1,0 +1,40 @@
+input:
+  transitions_path: ../data/processed/transitions_hourly_mimiccode_sample2pct.csv
+  episode_table_path: ../data/processed/readmission_episode.csv
+
+output:
+  root_dir: ../reports/hourly_sim/hardening_runs
+  run_id_mode: timestamp
+
+base_sim_config: ../configs/hourly_sim.yaml
+
+training:
+  variant_grid:
+    - baseline
+    - scaled
+    - scaled_clip
+    - scaled_done_balanced
+    - scaled_clip_done_balanced
+    - scaled_clip_done_balanced_stronger_reg
+
+qa:
+  reference_quantiles: [0.01, 0.99]
+  thresholds:
+    global_out_of_range_max: 0.05
+    per_feature_out_of_range_max: 0.10
+    ood_exceedance_max: 0.10
+    done_mean_min: 0.01
+    done_mean_max: 0.40
+    termination_rate_min: 0.02
+    termination_rate_max: 0.95
+    done_ece_max: 0.10
+    readmit_brier_delta_max: 0.01
+    readmit_auroc_delta_min: -0.01
+    rank_consistency_min: 0.70
+    top_policy_agreement_min: 4
+
+simulation:
+  max_steps: 72
+  n_rollouts_per_policy: 200
+  done_threshold: 0.5
+  seeds: [11, 22, 33, 44, 55]
