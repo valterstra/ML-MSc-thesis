@@ -12,6 +12,7 @@ __pycache__/
 # Large/generated artifacts
 data/processed/
 reports/
+models/
 
 # OS/editor
 .DS_Store

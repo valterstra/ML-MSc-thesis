@@ -1,26 +1,37 @@
 # CareAI
 
-CareAI is the active codebase for an MSc thesis workflow built around hourly ICU trajectories from MIMIC-IV. The repository turns raw MIMIC-code concept tables into an hourly transition dataset, derives a 30-day readmission dataset from those transitions, and then uses both artifacts to run simple policy simulation experiments.
+CareAI is the active codebase for an MSc thesis workflow built around MIMIC-IV. The repository contains two parallel pipelines:
 
-The repository is organized as a practical pipeline rather than a general-purpose package. A new reader should think of it in three stages:
+- **Daily hospital pipeline** (active thesis track): builds a hospital-wide daily state-action-state dataset from raw MIMIC-IV tables, trains a LightGBM transition model per output variable, and runs rollout evaluation of the resulting simulator.
+- **Hourly ICU pipeline** (earlier track): builds hourly ICU transitions from MIMIC-code concepts, derives a 30-day readmission model, and runs hourly simulation experiments.
 
-1. Build an hourly state-action-state dataset from MIMIC-IV.
-2. Collapse those trajectories into episode-level features and train a readmission model.
-3. Use the transition data and readmission table inside an hourly simulator for rollout, counterfactual, and hardening experiments.
+The repository is organized as a practical pipeline rather than a general-purpose package.
 
 ## What This Repository Contains
 
-The current thesis track focuses on three modules:
+### Daily hospital pipeline (primary track)
+
+- `hosp_daily`: builds a daily (s, a, s') dataset directly from MIMIC-IV hosp/ICU tables — hospital-wide, not ICU-only
+- `sim_daily`: trains one LightGBM model per state output and runs rollout evaluation
+
+### Hourly ICU pipeline (earlier track)
 
 - `transition_hourly_mimiccode`: builds hourly ICU transitions from MIMIC-code concepts stored in Postgres
 - `readmission`: builds an episode table and trains a baseline 30-day readmission model
 - `hourly_sim`: runs simulated hourly policy rollouts, counterfactual plots, and hardening checks
 
-Earlier exploratory tracks were moved out of this repository into sibling folders such as `../CareAI-second-track/`.
-
 ## Project Flow
 
-The intended execution order is:
+### Daily pipeline
+
+```text
+MIMIC-IV in Postgres (mimiciv_hosp, mimiciv_icu, mimiciv_derived schemas)
+  -> scripts/hosp_daily/build_hosp_daily.py   (builds hosp_daily_transitions.csv)
+  -> scripts/sim/train_daily_transition.py    (trains LightGBM transition models)
+  -> scripts/sim/evaluate_daily_sim.py        (rollout evaluation and metrics)
+```
+
+### Hourly pipeline
 
 ```text
 MIMIC-IV + mimic-code concepts in Postgres
@@ -29,32 +40,41 @@ MIMIC-IV + mimic-code concepts in Postgres
   -> hourly simulation and robustness analysis
 ```
 
-In practice:
-
-- The transition step is the data foundation.
-- The readmission step depends on the transition output.
-- The simulation step depends on both the transition output and the readmission episode table.
-
 ## Repository Layout
 
 ```text
 CareAI/
-  configs/      YAML configuration files for each pipeline stage
-  data/         Processed outputs written by the pipeline
-  reports/      QA summaries, model summaries, and simulation outputs
-  scripts/      Command-line entry points for transition, readmission, and simulation runs
-  src/careai/   Python implementation
-  tests/        Unit and integration tests
+  configs/              YAML configuration files for each pipeline stage
+  data/                 Processed outputs written by the pipeline (gitignored)
+  models/               Trained model artifacts (gitignored)
+  reports/              QA summaries, model summaries, and simulation outputs (gitignored)
+  scripts/
+    hosp_daily/         Daily dataset build entry points
+    sim/                Transition model training and evaluation
+    readmission/        Readmission episode build and model training
+    transitions/        Hourly transition build
+  src/careai/
+    hosp_daily/         Daily dataset SQL extraction and assembly
+    sim_daily/          LightGBM transition model, rollout env, evaluation
+    readmission/        Readmission episode builder and baseline model
+    sim_hourly/         Hourly simulator
+    transitions/        Hourly transition build logic
+  tests/                Unit and integration tests
+  docs/                 Reference notes (MIMIC schema, cohort decisions)
 ```
 
-Key entry points:
+Key entry points — daily pipeline:
+
+- `scripts/hosp_daily/build_hosp_daily.py`
+- `scripts/sim/train_daily_transition.py`
+- `scripts/sim/evaluate_daily_sim.py`
+
+Key entry points — hourly pipeline:
 
 - `scripts/transitions/run_hourly_mimiccode.py`
 - `scripts/readmission/build_episode_table.py`
-- `scripts/readmission/qa_episode_table.py`
 - `scripts/readmission/train_readmission_head.py`
 - `scripts/sim/run_hourly_sim.py`
-- `scripts/sim/plot_hourly_counterfactual.py`
 - `scripts/sim/harden_hourly_sim.py`
 
 ## Requirements
@@ -62,7 +82,7 @@ Key entry points:
 ### Python
 
 - Python 3.10 or newer
-- Core dependencies are defined in `pyproject.toml`
+- All dependencies are defined in `pyproject.toml`: pandas, numpy, scikit-learn, lightgbm, psycopg2-binary, joblib, PyYAML, scipy, statsmodels
 
 Install the project in a virtual environment:
 
@@ -75,9 +95,12 @@ pip install -e .
 
 ### Data and Database
 
-The transition pipeline expects access to a local or reachable Postgres database containing MIMIC-IV tables and derived MIMIC-code concepts.
+Both pipelines require MIMIC-IV loaded into a local Postgres database.
 
-The default config assumes:
+- **Daily pipeline** uses `mimiciv_hosp`, `mimiciv_icu`, `mimiciv_derived` schemas directly from the MIMIC-IV Postgres dump.
+- **Hourly pipeline** additionally requires mimic-code derived concept tables; see `configs/transition_hourly_mimiccode.yaml` for the expected sibling repo path.
+
+Default database config (shared by both pipelines):
 
 - Postgres host: `localhost`
 - Postgres port: `5432`
@@ -85,17 +108,7 @@ The default config assumes:
 - Username from environment variable: `PGUSER`
 - Password from environment variable: `PGPASSWORD`
 
-The default transition config also assumes the sibling repository path:
-
-- `../../external_repos_top3/mimic-code`
-
-Schema defaults in `configs/transition_hourly_mimiccode.yaml`:
-
-- `mimiciv_hosp_typed`
-- `mimiciv_icu`
-- `mimiciv_derived`
-
-Before running the transition build, set your database credentials in the shell:
+Set credentials before running:
 
 ```powershell
 $env:PGUSER="your_username"
@@ -103,6 +116,66 @@ $env:PGPASSWORD="your_password"
 ```
 
 ## Quick Start
+
+### Daily pipeline (start here for the current thesis track)
+
+Prerequisites: MIMIC-IV loaded into Postgres with schemas `mimiciv_hosp`, `mimiciv_icu`, and `mimiciv_derived`. Set credentials:
+
+```powershell
+$env:PGUSER="your_username"
+$env:PGPASSWORD="your_password"
+```
+
+#### Step 1 — Build the daily dataset
+
+```powershell
+python scripts/hosp_daily/build_hosp_daily.py --config configs/hosp_daily.yaml
+```
+
+To build a 5,000-episode sample instead of the full dataset:
+
+```powershell
+python scripts/hosp_daily/build_hosp_daily.py --config configs/hosp_daily.yaml --sample-only
+```
+
+Primary outputs:
+
+- `data/processed/hosp_daily_transitions.csv`
+- `data/processed/hosp_daily_transitions_sample5k.csv`
+- `reports/hosp_daily/build_manifest.json`
+
+#### Step 2 — Train the transition model
+
+```powershell
+python scripts/sim/train_daily_transition.py
+```
+
+To train on the sample dataset:
+
+```powershell
+python scripts/sim/train_daily_transition.py --csv data/processed/hosp_daily_transitions_sample5k.csv
+```
+
+Primary outputs (written to `models/sim_daily/`):
+
+- One `.joblib` file per output variable (continuous labs, binary flags, discharge)
+- `models/sim_daily/metadata.json`
+
+#### Step 3 — Evaluate the simulator
+
+```powershell
+python scripts/sim/evaluate_daily_sim.py
+```
+
+Primary outputs:
+
+- `reports/sim_daily/single_step_metrics.json`
+- `reports/sim_daily/simulated_trajectories.csv`
+- `reports/sim_daily/rollout_comparison.json`
+
+---
+
+### Hourly pipeline (earlier track)
 
 If you are new to the project, use this order.
 
@@ -122,7 +195,6 @@ python scripts/transitions/run_hourly_mimiccode.py --config configs/transition_h
 Primary outputs:
 
 - `data/processed/transitions_hourly_mimiccode.csv`
-- `data/processed/transitions_hourly_mimiccode_sample2pct.csv`
 - `data/processed/manifest_transition_hourly_mimiccode.json`
 - `reports/transition_hourly_mimiccode/qa_summary.json`
 - `reports/transition_hourly_mimiccode/qa_summary.md`
