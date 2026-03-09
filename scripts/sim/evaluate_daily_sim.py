@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--n-rollouts", type=int, default=500)
     parser.add_argument("--max-days", type=int, default=60)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--fixed-horizon", action="store_true",
+                        help="Ignore done signal; always run exactly --max-days steps")
     args = parser.parse_args()
 
     # 1. Load data (for initial states + real comparison)
@@ -48,13 +50,23 @@ def main() -> None:
     env = DailySimEnv(model, data.initial_states, max_days=args.max_days)
 
     # 4. Run rollouts
-    print(f"Running {args.n_rollouts} rollouts (max {args.max_days} days, seed={args.seed}) ...")
-    sim_traj = run_rollouts(env, n_rollouts=args.n_rollouts, max_days=args.max_days, seed=args.seed)
+    horizon_str = f"fixed {args.max_days} days" if args.fixed_horizon else f"max {args.max_days} days"
+    print(f"Running {args.n_rollouts} rollouts ({horizon_str}, seed={args.seed}) ...")
+    sim_traj = run_rollouts(
+        env, n_rollouts=args.n_rollouts, max_days=args.max_days,
+        seed=args.seed, fixed_horizon=args.fixed_horizon,
+    )
     print(f"  Simulated rows: {len(sim_traj):,}")
 
     # 5. Compare distributions
+    # When fixed-horizon, restrict real data to the same day window for a fair comparison
+    real_data = data.raw
+    if args.fixed_horizon:
+        real_data = real_data[real_data["day_of_stay"] <= args.max_days]
+        print(f"  Real data filtered to day_of_stay <= {args.max_days}: {len(real_data):,} rows")
+
     print("\nRollout vs real distribution comparison:")
-    comparison = rollout_comparison(sim_traj, data.raw)
+    comparison = rollout_comparison(sim_traj, real_data)
     for col, m in comparison.items():
         if m.get("ks_stat") is not None:
             print(f"  {col:40s}  KS={m['ks_stat']:.4f}  p={m['ks_pval']:.6f}"

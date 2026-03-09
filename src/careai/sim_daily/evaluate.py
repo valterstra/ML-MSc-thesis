@@ -82,8 +82,14 @@ def run_rollouts(
     n_rollouts: int = 500,
     max_days: int = 60,
     seed: int = 42,
+    fixed_horizon: bool = False,
 ) -> pd.DataFrame:
-    """Generate *n_rollouts* simulated trajectories with zero actions."""
+    """Generate *n_rollouts* simulated trajectories with zero actions.
+
+    If *fixed_horizon* is True, ignore the done signal and always run
+    exactly *max_days* steps — useful for clean distribution comparisons
+    where episode length variability would confound the evaluation.
+    """
     rng = np.random.default_rng(seed)
     zero_action = {c: 0.0 for c in ACTION_COLS}
 
@@ -94,7 +100,7 @@ def run_rollouts(
         for day in range(1, max_days + 1):
             state, _reward, done, info = env.step(zero_action)
             records.append({"rollout_id": rid, "day": day, "done_prob": info["done_prob"], **state})
-            if done:
+            if done and not fixed_horizon:
                 break
 
     return pd.DataFrame(records)
