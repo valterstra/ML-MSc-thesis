@@ -9,10 +9,19 @@ __pycache__/
 .venv/
 .venv310/
 
-# Large/generated artifacts
-data/processed/
-reports/
-models/
+# Large/generated artifacts (keep folder structure via .gitkeep)
+data/processed/*
+!data/processed/.gitkeep
+
+reports/*
+!reports/*/
+reports/**/*
+!reports/**/.gitkeep
+
+models/*
+!models/*/
+models/**/*
+!models/**/.gitkeep
 
 # OS/editor
 .DS_Store
