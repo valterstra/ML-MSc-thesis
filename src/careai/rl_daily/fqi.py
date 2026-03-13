@@ -132,6 +132,98 @@ def _extract_rl_state(state_dict: dict[str, float]) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
+# Batched simulation helpers (used by collect_trajectories)
+# ---------------------------------------------------------------------------
+
+def _batch_causal_step(
+    states_df: pd.DataFrame,
+    actions_array: np.ndarray,
+    transition_model: TransitionModel,
+    ate_table: dict[tuple[str, str], float],
+) -> pd.DataFrame:
+    """Causally-corrected simulator step for a full batch of rows.
+
+    Equivalent to calling _causal_step once per row, but passes the entire
+    DataFrame to each LightGBM model in one call — much faster.
+
+    Parameters
+    ----------
+    states_df:
+        DataFrame with one row per (patient, action_sequence). Must contain
+        all columns expected by the transition model.
+    actions_array:
+        Integer array of shape (len(states_df),) — antibiotic action (0 or 1)
+        for each row.
+    transition_model, ate_table:
+        Same objects used in the sequential version.
+
+    Returns
+    -------
+    DataFrame with the same index as states_df, containing the causally
+    corrected next-state for every row.
+    """
+    # Build input matrix: all drug columns set to 0 (base / no-drug prediction)
+    X = pd.DataFrame(index=states_df.index)
+    for col in transition_model.input_cols:
+        if col in states_df.columns:
+            X[col] = states_df[col].values
+        else:
+            X[col] = 0.0
+    for col in ACTION_COLS:
+        if col in X.columns:
+            X[col] = 0.0
+
+    # Batch predict all continuous and binary outputs
+    out: dict[str, np.ndarray] = {}
+
+    for col in transition_model.output_continuous:
+        preds = transition_model.continuous_models[col].predict(X).astype(float)
+        if col in transition_model.clip_bounds:
+            lo, hi = transition_model.clip_bounds[col]
+            preds = np.clip(preds, lo, hi)
+        out[col] = preds
+
+    for col in transition_model.output_binary:
+        probs = transition_model.binary_models[col].predict_proba(X)[:, 1]
+        out[col] = (probs >= 0.5).astype(float)
+
+    # Apply ATE corrections only to rows where antibiotic action = 1
+    active = actions_array == 1
+    for (treatment, outcome), ate in ate_table.items():
+        if treatment == FQI_DRUG and outcome in out:
+            corrected = out[outcome].copy()
+            corrected[active] += ate
+            out[outcome] = corrected
+
+    next_df = pd.DataFrame(out, index=states_df.index)
+
+    # Carry forward static features (mirrors _causal_step logic)
+    for c in STATIC_FEATURES:
+        if c not in states_df.columns:
+            next_df[c] = 0.0
+        elif c == "day_of_stay":
+            next_df[c] = states_df[c].values + 1.0
+        elif c == "days_in_current_unit":
+            prev_icu = states_df["is_icu"].values if "is_icu" in states_df.columns else np.zeros(len(states_df))
+            curr_icu = next_df["is_icu"].values
+            next_df[c] = np.where(curr_icu == prev_icu, states_df[c].values + 1.0, 0.0)
+        else:
+            next_df[c] = states_df[c].values
+
+    for c in MEASURED_FLAGS:
+        next_df[c] = 1.0
+    for c in INFECTION_CONTEXT:
+        next_df[c] = 0.0
+
+    # Carry forward any remaining columns (e.g. hadm_id, split)
+    for c in states_df.columns:
+        if c not in next_df.columns:
+            next_df[c] = states_df[c].values
+
+    return next_df
+
+
+# ---------------------------------------------------------------------------
 # Trajectory collection
 # ---------------------------------------------------------------------------
 
@@ -143,10 +235,12 @@ def collect_trajectories(
     n_patients: int = 5000,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Enumerate all 2^N_RL_STEPS action sequences per patient.
+    """Enumerate all 2^N_RL_STEPS action sequences per patient (batched).
 
-    For each patient x action sequence, rolls out N_RL_STEPS RL steps
-    (each = SIM_STEPS_PER_RL simulator days) and records transitions.
+    All patients x action sequences are simulated simultaneously at each
+    time step using _batch_causal_step, replacing the original patient-by-
+    patient loop. Results are mathematically identical to the sequential
+    version — only the order of LightGBM calls changes.
 
     Returns DataFrame with columns:
       patient_idx, episode_idx, step, action, reward, done,
@@ -159,45 +253,72 @@ def collect_trajectories(
     sample = initial_states.iloc[idx].reset_index(drop=True)
 
     action_sequences = list(itertools.product([0, 1], repeat=N_RL_STEPS))
-    records: list[dict[str, Any]] = []
+    n_seqs = len(action_sequences)  # 2^N_RL_STEPS = 8
+    total_rows = n * n_seqs
 
-    for patient_idx, (_, row) in enumerate(sample.iterrows()):
-        if patient_idx % 500 == 0:
-            print(f"  Collecting trajectories: [{patient_idx}/{n}] ...", flush=True)
+    print(f"  Batch size: {n} patients x {n_seqs} sequences = {total_rows} rows", flush=True)
 
-        s0 = row.to_dict()
+    # Expand initial states: each patient repeated n_seqs times
+    # Row i -> patient i // n_seqs, sequence i % n_seqs
+    current_states = sample.loc[sample.index.repeat(n_seqs)].reset_index(drop=True)
+    patient_idx_arr = np.repeat(np.arange(n), n_seqs)
+    seq_idx_arr = np.tile(np.arange(n_seqs), n)
 
-        for ep_idx, seq in enumerate(action_sequences):
-            # Roll out full episode under this action sequence
-            states = [s0]
-            s = s0
-            for a in seq:
-                s_next = _rl_step(s, a, transition_model, ate_table)
-                states.append(s_next)
-                s = s_next
+    # Action for each row at each RL step: shape (total_rows, N_RL_STEPS)
+    action_seqs_array = np.array([action_sequences[s] for s in seq_idx_arr])
 
-            # Terminal reward: negative readmission risk at final state
-            terminal_reward = -float(predict_readmission_risk(readmission_model, states[-1]))
+    step_frames: list[pd.DataFrame] = []
 
-            for t, (a, s_curr, s_next) in enumerate(zip(seq, states[:-1], states[1:])):
-                is_terminal = (t == N_RL_STEPS - 1)
-                reward = terminal_reward if is_terminal else 0.0
+    for rl_step in range(N_RL_STEPS):
+        print(f"  RL step {rl_step + 1}/{N_RL_STEPS} ({n} patients) ...", flush=True)
 
-                rec: dict[str, Any] = {
-                    "patient_idx": patient_idx,
-                    "episode_idx": ep_idx,
-                    "step": t,
-                    "action": a,
-                    "reward": reward,
-                    "done": int(is_terminal),
-                }
-                for c in RL_STATE_COLS:
-                    rec[f"s_{c}"] = s_curr.get(c, np.nan)
-                    rec[f"sn_{c}"] = s_next.get(c, np.nan)
+        actions_this_step = action_seqs_array[:, rl_step]
 
-                records.append(rec)
+        # Snapshot current RL state features
+        s_data = {
+            f"s_{c}": current_states[c].values if c in current_states.columns else np.full(total_rows, np.nan)
+            for c in RL_STATE_COLS
+        }
 
-    return pd.DataFrame(records)
+        # Advance SIM_STEPS_PER_RL days in batch
+        next_states = current_states
+        for sim_day in range(SIM_STEPS_PER_RL):
+            next_states = _batch_causal_step(next_states, actions_this_step, transition_model, ate_table)
+            print(f"    sim day {sim_day + 1}/{SIM_STEPS_PER_RL} done", flush=True)
+
+        # Snapshot next RL state features
+        sn_data = {
+            f"sn_{c}": next_states[c].values if c in next_states.columns else np.full(total_rows, np.nan)
+            for c in RL_STATE_COLS
+        }
+
+        # Terminal reward: score all rows with readmission model in one call
+        is_terminal = rl_step == N_RL_STEPS - 1
+        if is_terminal:
+            print(f"  Computing terminal rewards ...", flush=True)
+            rewards = -predict_readmission_risk(readmission_model, next_states)
+            print(f"  Mean reward: {rewards.mean():.4f}", flush=True)
+        else:
+            rewards = np.zeros(total_rows)
+
+        step_df = pd.DataFrame({
+            "patient_idx": patient_idx_arr,
+            "episode_idx": seq_idx_arr,
+            "step": rl_step,
+            "action": actions_this_step,
+            "reward": rewards,
+            "done": int(is_terminal),
+            **s_data,
+            **sn_data,
+        })
+        step_frames.append(step_df)
+        print(f"  RL step {rl_step + 1}/{N_RL_STEPS} complete.", flush=True)
+
+        current_states = next_states
+
+    trajectories = pd.concat(step_frames, ignore_index=True)
+    print(f"  Trajectory collection done. {len(trajectories)} transitions total.", flush=True)
+    return trajectories
 
 
 # ---------------------------------------------------------------------------

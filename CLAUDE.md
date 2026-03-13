@@ -26,39 +26,57 @@ Step 2b: Estimate Causal Treatment Effects (AIPW)
 
 Step 2c: Train CATE Models (heterogeneous effects)
   scripts/causal/train_cate_models.py
-  → models/cate_daily_full/                      ⏳ NOT YET RUN on full data
+  → models/cate_daily_full/                      ✅ 27 models (3 per pair: outcome + propensity + CausalForestDML)
   → reports/cate_daily_full/
-  (models/cate_daily/ = 5k sample reference, temporary)
+  (models/cate_daily/ = 5k sample reference, kept for comparison)
 
 Step 3: Train Readmission Reward Model
   scripts/rl/train_readmission_reward.py
   → models/rl_daily_full/                        ✅ AUC=0.647, 2.14M train rows
 
 Step 3b: Run RL Policy Evaluation
-  scripts/rl/run_policy.py --policy-type ate    → reports/rl_daily_full/ate/  ⏳ pending
-  scripts/rl/run_policy.py --policy-type cate   → reports/rl_daily_full/cate/ ⏳ pending
+  scripts/rl/run_policy.py --policy-type ate    → reports/rl_daily_full/ate/  ✅ done
+  scripts/rl/run_policy.py --policy-type cate   → reports/rl_daily_full/cate/ ✅ done
+
+Step 4: Fitted Q-Iteration (FQI) — Multi-Step RL
+  scripts/rl/train_fqi_agent.py         → models/fqi_daily/,        reports/rl_daily_full/fqi/         ✅ antibiotic-only baseline
+  scripts/rl/train_fqi_multi_agent.py   → models/fqi_multi/,        reports/rl_daily_full/fqi_multi/   ✅ 5-drug, 26 features (3k patients, 64 seqs)
+  scripts/rl/train_fqi_multi_agent.py   → models/fqi_multi_large/,  reports/rl_daily_full/fqi_multi_large/ ✅ scaled up (5k patients, 128 seqs)
 ```
 
-## Two Parallel Policy Branches
+## Policy Branches (all completed)
 
-Both branches share the same transition model (sim_daily_full) and reward model (rl_daily_full).
-They differ only in how drug effects are estimated and applied:
+All branches share the same transition model (sim_daily_full) and reward model (rl_daily_full).
 
 ```
-ATE branch (Option C):
-  Scalar AIPW effect per (drug, outcome) pair — same delta for every patient
+ATE branch (Option C):                                                 ✅ done
+  1-step greedy. Scalar AIPW effect per (drug, outcome) — same delta for every patient.
   Source: reports/causal_daily_full/treatment_effects.json
-  Run:    scripts/rl/run_policy.py --policy-type ate
+  Result: mean risk 0.4228, beats do-nothing 98.6% of patients
 
-CATE branch (Option D):
-  CausalForestDML — per-patient heterogeneous effect based on current state
-  Source: models/cate_daily_full/  (pending full-data training)
-  Run:    scripts/rl/run_policy.py --policy-type cate
+CATE branch (Option D):                                                ✅ done
+  1-step greedy. CausalForestDML — per-patient heterogeneous effect based on current state.
+  Source: models/cate_daily_full/
+  Result: mean risk 0.4219, beats do-nothing 98.8% of patients
+
+FQI baseline (Option E):                                               ✅ done
+  3-step planning. Antibiotic only. 7 RL state features. 5k train patients, 8 seqs.
+  Source: models/fqi_daily/
+  Result: mean risk 0.4902, beats do-nothing 63.6% of patients
+
+FQI-multi (Option F):                                                  ✅ done
+  3-step planning. 5 drugs jointly. Full 26-feature state. 3k patients x 64 seqs.
+  Source: models/fqi_multi/
+  Result: mean risk 0.4879, beats do-nothing 73.4% of patients
+
+FQI-multi-large (Option G):                                            ✅ done
+  3-step planning. 5 drugs jointly. Full 26-feature state. 5k patients x 128 seqs.
+  Source: models/fqi_multi_large/
+  Result: mean risk 0.4874, beats do-nothing 75.8% of patients
 ```
 
-Both do exhaustive search over 2^5=32 combinations of 5 drugs
-(antibiotic, anticoagulant, diuretic, insulin, steroid — opioid excluded).
-Pick the combo that minimises P(readmit_30d=1) from the readmission model.
+ATE/CATE: exhaustive search over 2^5=32 drug combinations, 1 simulator step, score with readmission model.
+FQI variants: 3 decision points (day 0/2/4), 2 sim days per step, sparse terminal reward, 10 FQI iterations.
 
 ## Source Code Map (src/careai/)
 
@@ -90,6 +108,13 @@ rl_daily/
                      CATEs precomputed once per patient (9 calls), reused across 32 combos
   evaluate.py      — evaluate_policy(ate_table=... OR cate_registry=...) — pass exactly one
                      Compares: policy vs do-nothing vs real clinical actions
+  fqi.py           — FittedQIteration: antibiotic-only, 7 RL state features, 3 steps x 2 days
+                     collect_trajectories() — batched rollout (2^3=8 seqs enumerated)
+                     FittedQIteration.fit() — backward induction, 1 LightGBM Q-model per step
+  fqi_multi.py     — FittedQIterationMulti: 5 drugs jointly, 26-feature state, 3 steps x 2 days
+                     collect_trajectories_multi() — random sampling (N_SEQS=64 default)
+                     FittedQIterationMulti.fit() — same backward induction, 31-feature Q-function
+                     FittedQIterationMulti.best_combo() — argmax over all 32 drug combos
 
 hosp_daily/        — dataset builder (Step 1, already run)
   build.py         — 8-step pipeline: spine → static → location → service →
