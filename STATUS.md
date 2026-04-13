@@ -1,69 +1,111 @@
-# CareAI Pipeline Status
+# CareAI Status
 
-Last updated: 2026-03-13
+Last updated: 2026-04-03
 
-## Current State
+## Current Thesis State
 
-| Step | Description | Status | Output |
-|------|-------------|--------|--------|
-| 1 | Build hosp_daily dataset | ✅ Done | `data/processed/hosp_daily_transitions.csv` |
-| 2 | Train transition simulator | ✅ Done | `models/sim_daily_full/` |
-| 2b | Estimate AIPW ATEs (causal) | ✅ Done | `reports/causal_daily_full/treatment_effects.json` |
-| 2c | Train CATE models (full data) | ✅ Done | `models/cate_daily_full/` |
-| 3 | Train readmission reward model | ✅ Done | `models/rl_daily_full/` (AUC 0.647) |
-| 3b-ATE | Run ATE policy on full data | ✅ Done | `reports/rl_daily_full/ate/` |
-| 3b-CATE | Run CATE policy on full data | ✅ Done | `reports/rl_daily_full/cate/` |
-| 4a | FQI — antibiotic-only baseline | ✅ Done | `models/fqi_daily/`, `reports/rl_daily_full/fqi/` |
-| 4b | FQI-multi — 5 drugs, 26 features (3k/64) | ✅ Done | `models/fqi_multi/`, `reports/rl_daily_full/fqi_multi/` |
-| 4c | FQI-multi-large — scaled up (5k/128) | ✅ Done | `models/fqi_multi_large/`, `reports/rl_daily_full/fqi_multi_large/` |
+The active thesis track is the **ICU readmission pipeline with CARE-Sim**.
 
-## What To Run Next
+The important transition over the last work cycle is:
 
-All core pipeline steps are complete. Candidate next improvements:
+- the older ICU readmission RL/simulator stack (steps 09-13) is no longer the end state
+- the current pipeline now extends through:
+  - Step 14: CARE-Sim training
+  - Step 15: CARE-Sim evaluation
+  - Step 16: CARE-Sim control layer (planner + DDQN)
 
-1. **Dense intermediate rewards** — reward at every RL step, not just terminal. Addresses sparse reward problem in FQI.
-2. **CATE corrections inside FQI** — replace scalar ATE with personalized CATE deltas at each simulator step.
-3. **Result analysis** — per-patient subgroup analysis, policy agreement/disagreement between branches.
+## ICU Readmission Pipeline
 
-## Key Results
+| Step | Description | Status | Primary Output |
+|------|-------------|--------|----------------|
+| 01-08 | ICU cohort build and preprocessing | Complete | `data/processed/icu_readmit/ICUdataset.csv` |
+| 09 | FCI stability causal discovery | Complete | `reports/icu_readmit/step_09_causal_states/` |
+| 10c | Tier-2 RL preprocessing | Complete | `data/processed/icu_readmit/rl_dataset_tier2.parquet` |
+| 11b | Tier-2 offline DDQN + SARSA | Complete | `models/icu_readmit/tier2/` |
+| 11c | Tier-2 + discharge action DDQN | Complete | `models/icu_readmit/tier2_discharge/` |
+| 13 | Older model-based simulators | Complete | `models/icu_readmit/simulator/` |
+| 14 | CARE-Sim transformer world model | Complete | `models/icu_readmit/caresim/` |
+| 15 | CARE-Sim held-out evaluation | Complete | `reports/icu_readmit/caresim/` |
+| 16 | CARE-Sim control layer | Complete | `models/icu_readmit/caresim_control/`, `reports/icu_readmit/caresim_control/` |
 
-### Readmission model (full data)
-- AUC: **0.647** | Brier: 0.231 | Prevalence: 22.7% | Features: 43
-- Trained on 2.14M rows, tested on 458k rows
+## Current Primary Model Design
 
-### Policy comparison (500 test patients, 3-way evaluation)
+Tier-2 CARE-Sim uses:
 
-| Policy | Mean readmission risk | Beats do-nothing |
-|--------|----------------------|------------------|
-| CATE (1-step greedy, 5 drugs, personalized) | 0.4219 | 98.8% |
-| ATE (1-step greedy, 5 drugs, scalar) | 0.4228 | 98.6% |
-| FQI-multi-large (3-step, 5 drugs, 26 feat, 5k/128) | 0.4874 | 75.8% |
-| FQI-multi (3-step, 5 drugs, 26 feat, 3k/64) | 0.4879 | 73.4% |
-| FQI baseline (3-step, antibiotic only, 7 feat) | 0.4902 | 63.6% |
-| Do-nothing | 0.4959 | — |
-| Real clinical (day-0 drugs held constant) | 0.4955 | — |
+- Dynamic state: `Hb`, `BUN`, `Creatinine`, `HR`, `Shock_Index`
+- Static confounders: `age`, `charlson_score`, `prior_ed_visits_6m`
+- Total state dimension: `8`
+- Actions: `diuretic`, `ivfluid`, `vasopressor`, `antibiotic`
+- Action space: `16` binary combinations
 
-### AIPW ATEs (full data)
-| Treatment | Outcome | ATE | Expected direction |
-|-----------|---------|-----|--------------------|
-| insulin_active | glucose | +25.19 | down (confounded) |
-| antibiotic_active | wbc | -0.035 | down ✓ |
-| antibiotic_active | positive_culture_cumulative | +0.007 | down ✗ |
-| diuretic_active | bun | +1.58 | up ✓ |
-| diuretic_active | potassium | -0.036 | down ✓ |
-| diuretic_active | sodium | -0.093 | up ✗ |
-| steroid_active | glucose | +3.37 | up ✓ |
-| steroid_active | wbc | +0.232 | up ✓ |
-| anticoagulant_active | inr | +0.025 | up ✓ |
+Readmission is **not** modeled as an explicit simulator output head. It is currently encoded implicitly through the terminal reward target used during RL preprocessing.
 
-### CATE models (full data)
-- 27 models total (3 per treatment-outcome pair: outcome nuisance, propensity nuisance, CausalForestDML)
-- Trained on full data in `models/cate_daily_full/`
-- Population-level ATEs consistent with AIPW
+## Step 15 -- CARE-Sim Evaluation
 
-## Notes
-- `models/cate_daily/` = 5k sample CATE models, kept as reference
-- `models/cate_daily_full/` = full-data CATE models (production)
-- econml requires scikit-learn <1.7 — InconsistentVersionWarning on model load is harmless
-- On Windows/bash: DB credentials must be passed inline (not inherited from system env vars)
-- FQI scripts: `scripts/rl/train_fqi_agent.py` (antibiotic-only) and `scripts/rl/train_fqi_multi_agent.py` (5-drug)
+Held-out CARE-Sim summary from `reports/icu_readmit/caresim/caresim_summary.json`:
+
+- One-step val next-state MSE: `0.0830`
+- One-step test next-state MSE: `0.0834`
+- Reward MAE: about `1.87` on both val/test
+- Terminal accuracy: about `0.956` on both val/test
+- Mean uncertainty: about `0.0706`
+
+Closed-loop rollout behavior:
+
+- Val step-1 state MSE: `0.1169`
+- Val step-5 state MSE: `0.2199`
+- Test step-1 state MSE: `0.1080`
+- Test step-5 state MSE: `0.1764`
+
+Interpretation:
+
+- the simulator is stable enough for short-horizon control experiments
+- rollout error grows with horizon, as expected
+- uncertainty remains low enough to support planner/DDQN experiments
+
+## Step 16 -- CARE-Sim Control Layer
+
+Current outputs:
+
+- Model folder: `models/icu_readmit/caresim_control/`
+- Reports: `reports/icu_readmit/caresim_control/`
+- Main summary: `step_16_summary.json`
+- Diagnostics: `step_16_diagnostics_val.json`, `step_16_diagnostics_test.json`
+
+Latest 100-episode evaluation:
+
+| Split | Planner | DDQN | Repeat-last | Random |
+|------|---------:|-----:|------------:|-------:|
+| Val  | 7.65 | 4.16 | 2.44 | 2.24 |
+| Test | 8.02 | 4.77 | 2.87 | 2.56 |
+
+Diagnostics:
+
+- planner is still the strongest policy
+- DDQN now clearly beats `random` and is moderately ahead of `repeat_last`
+- DDQN improved after increasing training budget and slowing epsilon decay
+- DDQN still uses only two actions (`0` and `2`) and remains partially action-collapsed
+
+Val pairwise diagnostics:
+
+- `ddqn - planner`: mean diff `-3.49`, win rate `0.04`
+- `ddqn - random`: mean diff `+1.92`, win rate `0.84`
+- `ddqn - repeat_last`: mean diff `+1.72`, win rate `0.58`
+
+## What To Do Next
+
+The repo is now in a state where two paths are reasonable:
+
+1. Treat planner as the strongest current control result and write it up as the main Step 16 result.
+2. Run one more structural DDQN improvement cycle if closing the planner gap is important.
+
+If continuing DDQN work, the next changes should be structural rather than just increasing training time again.
+
+## Important Current Files
+
+- `scripts/icu_readmit/step_14_caresim_train.py`
+- `scripts/icu_readmit/step_15_caresim_evaluate.py`
+- `scripts/icu_readmit/step_16_caresim_control.py`
+- `notebooks/step_14_caresim_colab.ipynb`
+- `notebooks/step_16_caresim_control_colab.ipynb`
+- `docs/caresim_playbook.md`

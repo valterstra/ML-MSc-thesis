@@ -1,0 +1,19 @@
+# Sepsis dataset extraction configuration
+# Faithful PostgreSQL port of the AI-Clinician-MIMICIV pipeline
+# (original: github.com/cmudig/AI-Clinician-MIMICIV)
+
+database:
+  host: localhost
+  port: 5432
+  dbname: mimic
+  # credentials via env vars: PGUSER, PGPASSWORD
+
+paths:
+  raw_data:    data/interim/sepsis/raw_data
+  intermediates: data/interim/sepsis/intermediates
+  output:      data/processed/sepsis_dataset.csv
+
+pipeline:
+  resolution: 4.0        # hours per time block
+  time_before_onset: 49  # hours before sepsis onset to include
+  time_after_onset: 25   # hours after sepsis onset to include

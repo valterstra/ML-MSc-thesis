@@ -1,0 +1,40 @@
+db:
+  host: localhost
+  port: 5432
+  name: mimic
+  user_env: PGUSER
+  password_env: PGPASSWORD
+
+schemas:
+  hosp: mimiciv_hosp
+  icu: mimiciv_icu
+  derived: mimiciv_derived
+
+cohort:
+  min_age: 0
+  exclude_in_hospital_deaths: false
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+sample:
+  n_episodes: 5000
+  seed: 42
+
+output:
+  dir: data/processed
+  filename: hosp_daily_v2_transitions.csv
+  sample_filename: hosp_daily_v2_transitions_sample5k.csv
+
+lab_fill_limits:
+  tier1: 2
+  tier2: 3
+  albumin: 5
+  v2_fast: 2      # CRP, PTT
+  v2_cardiac: 3   # troponin T/I, BNP
+  v2_lft: 3       # ALT, AST
+
+lactate_threshold: 2.0

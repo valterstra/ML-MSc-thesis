@@ -1,0 +1,31 @@
+db:
+  host: localhost
+  port: 5432
+  name: mimic
+  user_env: PGUSER
+  password_env: PGPASSWORD
+
+schemas:
+  hosp: mimiciv_hosp
+  icu: mimiciv_icu
+  derived: mimiciv_derived
+
+cohort:
+  min_age: 0
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+sample:
+  n_episodes: 500   # used by --sample-only (smoke test)
+  seed: 42
+
+output:
+  dir: data/processed
+  filename: hosp_daily_v3_triplets.csv
+  sample_filename: hosp_daily_v3_triplets_sample500.csv
+
+lactate_threshold: 2.0

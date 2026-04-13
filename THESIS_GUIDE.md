@@ -1,5 +1,9 @@
 # CARE-AI Thesis Guide
 
+> Status note (2026-04-03): this document mainly describes the earlier daily hospital track.
+> The current ICU readmission / CARE-Sim work is now documented in `README.md`,
+> `STATUS.md`, `docs/icu_readmit_rl_pipeline.md`, and `docs/caresim_playbook.md`.
+
 *An internal reference document explaining what this project does, why, and how — step by step.*
 
 ---

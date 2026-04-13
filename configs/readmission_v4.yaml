@@ -1,0 +1,34 @@
+db:
+  host: localhost
+  port: 5432
+  name: mimic
+  user_env: PGUSER
+  password_env: PGPASSWORD
+
+schemas:
+  hosp: mimiciv_hosp
+  icu: mimiciv_icu
+  derived: mimiciv_derived
+
+cohort:
+  exclude_obstetrics: true      # exclude OBS/GYN service admissions
+  exclude_hospital_deaths: true # exclude hospital_expire_flag=1
+  exclude_postdischarge_death_days: 30  # exclude deaths within N days of discharge
+
+split:
+  train: 0.70
+  valid: 0.15
+  test: 0.15
+  seed: 42
+
+sample:
+  n_episodes: 500   # used by --sample-only (smoke test)
+  seed: 42
+
+output:
+  dir: data/processed
+  filename: readmission_v4_admissions.csv
+  sample_filename: readmission_v4_admissions_sample500.csv
+
+# Labs to pull at discharge (last value within 48h before dischtime)
+labs_window_hours: 48
