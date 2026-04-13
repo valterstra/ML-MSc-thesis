@@ -28,6 +28,7 @@ logs/
 papers/
 external_repositories/
 caresim_colab.zip
+dist/
 
 # OS/editor
 .DS_Store
