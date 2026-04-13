@@ -12,6 +12,7 @@ __pycache__/
 # Large/generated artifacts (keep folder structure via .gitkeep)
 data/processed/*
 !data/processed/.gitkeep
+data/interim/
 
 reports/*
 !reports/*/
@@ -22,6 +23,11 @@ models/*
 !models/*/
 models/**/*
 !models/**/.gitkeep
+
+logs/
+papers/
+external_repositories/
+caresim_colab.zip
 
 # OS/editor
 .DS_Store

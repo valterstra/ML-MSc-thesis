@@ -1,5 +1,10 @@
 # CARE-AI Thesis Guide
 
+> Status note (2026-04-13): `main` now tracks only the active ICU-readmission `01-14` pipeline.
+> The practical runbook lives in `README.md`, `STATUS.md`,
+> `docs/icu_readmit_pipeline.md`, `docs/icu_readmit_rl_pipeline.md`,
+> and `docs/caresim_playbook.md`.
+
 *An internal reference document explaining what this project does, why, and how — step by step.*
 
 ---
