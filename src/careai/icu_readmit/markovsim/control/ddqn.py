@@ -36,6 +36,7 @@ class DQNConfig:
     epsilon_start: float = 1.0
     epsilon_end: float = 0.10
     epsilon_decay_steps: int = 20000
+    terminal_stop_threshold: float = 0.5
     uncertainty_penalty: float = 0.25
     uncertainty_threshold: float = 1.0
     log_every: int = 100
@@ -108,6 +109,7 @@ def train_ddqn(
     env = MarkovSimEnvironment(
         ensemble,
         max_steps=config.rollout_steps,
+        terminal_stop_threshold=config.terminal_stop_threshold,
         uncertainty_threshold=config.uncertainty_threshold,
         device=device,
         severity_model=severity_model,

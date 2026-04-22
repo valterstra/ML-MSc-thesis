@@ -111,13 +111,31 @@ q_current = Q_online(o, a)
 
 2. Build the target:
 
-- if `done = 1`:
+DDQN does **not** use the target network by itself. It uses the online and target
+networks together:
+
+- `Q_online(o, a)` gives the current value estimate for the action that was taken
+- `Q_online(o_next, ·)` is used to choose the best next action
+- `Q_target(o_next, ·)` is used to evaluate that next action
+
+So:
+
+- the online network chooses the next action
+- the target network evaluates it
+
+The target is:
+
+```text
+target = r + gamma * (1 - done) * Q_target(o_next, argmax_a Q_online(o_next, a))
+```
+
+If `done = 1`:
 
 ```text
 target = r
 ```
 
-- otherwise:
+Otherwise:
 
 ```text
 best_next_action = argmax_a Q_online(o_next, a)
@@ -125,6 +143,9 @@ target = r + gamma * Q_target(o_next, best_next_action)
 ```
 
 3. Update `Q_online` so that `q_current` moves closer to `target`.
+
+That comparison is what drives learning. In code, the update minimizes the
+difference between `q_current` and `target` with a regression loss.
 
 That is the whole DDQN update.
 

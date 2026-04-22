@@ -5,8 +5,7 @@ This is the active ICU-readmit workflow currently used in the project.
 ## Current Steps
 
 - Steps `01-08`: cohort construction and ICU dataset building
-- Step `09a`: causal state analysis
-- Step `09b`: causal action analysis
+- Step `09`: state/action selection
 - Step `10a`: selected replay dataset build
 - Step `10b`: selected severity surrogate
 - Step `10c`: selected terminal readmission model
@@ -50,6 +49,7 @@ This is the active ICU-readmit workflow currently used in the project.
 ## Notes
 
 - The old broad / tier2 / discharge RL branch is no longer part of the active pipeline.
+- The old `09b` causal action-analysis branch is archived as legacy step `21` and is no longer part of the active pipeline.
 - That retired branch is preserved under:
   - `scripts/icu_readmit/legacy/`
   - `src/careai/icu_readmit/legacy/`

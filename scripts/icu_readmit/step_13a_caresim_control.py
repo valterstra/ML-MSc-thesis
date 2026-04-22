@@ -26,7 +26,15 @@ from careai.icu_readmit.caresim.control.evaluation import (  # noqa: E402
 from careai.icu_readmit.caresim.control.planner import PlannerConfig  # noqa: E402
 from careai.icu_readmit.caresim.ensemble import CareSimEnsemble  # noqa: E402
 from careai.icu_readmit.caresim.readmit import LightGBMReadmitModel  # noqa: E402
+from careai.icu_readmit.caresim.simulator import CareSimEnvironment  # noqa: E402
 from careai.icu_readmit.caresim.severity import load_severity_model  # noqa: E402
+from careai.icu_readmit.rl.bandit import (  # noqa: E402
+    BanditConfig,
+    greedy_policy_from_values,
+    load_bandit_model,
+    save_bandit_artifacts,
+    train_bandit,
+)
 from careai.icu_readmit.rl.networks import DuelingDQN  # noqa: E402
 
 
@@ -76,10 +84,20 @@ def build_parser() -> argparse.ArgumentParser:
     ddqn_p.add_argument("--epsilon-end", type=float, default=0.10)
     ddqn_p.add_argument("--epsilon-decay-steps", type=int, default=20000)
 
+    bandit_p = sub.add_parser("train-bandit", help="Train simple multi-armed bandit against CARE-Sim")
+    add_common(bandit_p)
+    bandit_p.add_argument("--train-episodes", type=int, default=1000)
+    bandit_p.add_argument("--train-steps", type=int, default=5000)
+    bandit_p.add_argument("--bandit-log-every", type=int, default=100)
+    bandit_p.add_argument("--epsilon-start", type=float, default=1.0)
+    bandit_p.add_argument("--epsilon-end", type=float, default=0.05)
+    bandit_p.add_argument("--epsilon-decay-steps", type=int, default=5000)
+
     eval_p = sub.add_parser("eval", help="Evaluate planner and DDQN policies")
     add_common(eval_p)
     eval_p.add_argument("--episodes-per-split", type=int, default=100)
     eval_p.add_argument("--ddqn-path", default="models/icu_readmit/caresim_control_selected_causal/ddqn_model.pt")
+    eval_p.add_argument("--bandit-path", default="models/icu_readmit/caresim_control_selected_causal/bandit_model.json")
 
     smoke_p = sub.add_parser("smoke", help="Run a compact planner + DDQN smoke pass")
     add_common(smoke_p)
@@ -224,11 +242,34 @@ def load_ddqn_model(model_path: str, device: torch.device) -> DuelingDQN:
     return model
 
 
+def bandit_config_from_args(args) -> BanditConfig:
+    train_steps = getattr(args, "train_steps", 5000)
+    log_every = getattr(args, "bandit_log_every", 100)
+    epsilon_start = getattr(args, "epsilon_start", 1.0)
+    epsilon_end = getattr(args, "epsilon_end", 0.05)
+    epsilon_decay_steps = getattr(args, "epsilon_decay_steps", 5000)
+    if args.smoke:
+        train_steps = min(train_steps, 200)
+        log_every = min(log_every, 20)
+        epsilon_decay_steps = min(epsilon_decay_steps, 500)
+    return BanditConfig(
+        rollout_steps=args.rollout_steps,
+        train_steps=train_steps,
+        epsilon_start=epsilon_start,
+        epsilon_end=epsilon_end,
+        epsilon_decay_steps=epsilon_decay_steps,
+        uncertainty_penalty=args.uncertainty_penalty,
+        log_every=log_every,
+        seed=args.seed,
+    )
+
+
 def run_evaluation(
     args,
     ensemble: CareSimEnsemble,
     device: torch.device,
     ddqn_model: DuelingDQN | None = None,
+    bandit_values: np.ndarray | None = None,
     severity_model = None,
     terminal_outcome_model: LightGBMReadmitModel | None = None,
 ) -> dict:
@@ -269,6 +310,8 @@ def run_evaluation(
             "repeat_last": make_repeat_last_policy(),
             "random": make_random_policy(np.random.default_rng(split_seed)),
         }
+        if bandit_values is not None:
+            policies["bandit"] = greedy_policy_from_values(bandit_values)
         if ddqn_model is not None:
             policies["ddqn"] = greedy_policy_from_model(ddqn_model, device)
 
@@ -319,6 +362,8 @@ def main() -> None:
     args.log = resolve_repo_path(args.log)
     if hasattr(args, "ddqn_path"):
         args.ddqn_path = resolve_repo_path(args.ddqn_path)
+    if hasattr(args, "bandit_path"):
+        args.bandit_path = resolve_repo_path(args.bandit_path)
 
     setup_logging(args.log)
     t0 = time.time()
@@ -385,13 +430,43 @@ def main() -> None:
         model_path = save_ddqn_artifacts(model, metrics, config, Path(args.control_model_dir))
         logging.info("DDQN saved to %s", model_path)
 
+    elif args.mode == "train-bandit":
+        episodes = load_seed_episodes(
+            data_path=args.data,
+            split="train",
+            history_len=args.history_len,
+            max_episodes=args.train_episodes,
+            seed=args.seed,
+        )
+        logging.info("Loaded %d training seed episodes", len(episodes))
+        config = bandit_config_from_args(args)
+        env = CareSimEnvironment(
+            ensemble,
+            max_steps=args.rollout_steps,
+            uncertainty_threshold=args.uncertainty_threshold,
+            device=device,
+            severity_model=severity_model,
+            terminal_outcome_model=terminal_outcome_model,
+            terminal_reward_scale=args.terminal_reward_scale,
+        )
+        action_values, action_counts, metrics = train_bandit(
+            env=env,
+            episodes=episodes,
+            config=config,
+            device=device,
+        )
+        model_path = save_bandit_artifacts(action_values, action_counts, metrics, config, Path(args.control_model_dir))
+        logging.info("Bandit saved to %s", model_path)
+
     elif args.mode == "eval":
         ddqn_model = load_ddqn_model(args.ddqn_path, device=device)
+        bandit_values = load_bandit_model(args.bandit_path) if Path(args.bandit_path).exists() else None
         summary = run_evaluation(
             args,
             ensemble,
             device,
             ddqn_model=ddqn_model,
+            bandit_values=bandit_values,
             severity_model=severity_model,
             terminal_outcome_model=terminal_outcome_model,
         )
@@ -417,11 +492,30 @@ def main() -> None:
         )
         model_path = save_ddqn_artifacts(ddqn_model, metrics, config, Path(args.control_model_dir))
         logging.info("Smoke DDQN saved to %s", model_path)
+        bandit_cfg = bandit_config_from_args(args)
+        env = CareSimEnvironment(
+            ensemble,
+            max_steps=args.rollout_steps,
+            uncertainty_threshold=args.uncertainty_threshold,
+            device=device,
+            severity_model=severity_model,
+            terminal_outcome_model=terminal_outcome_model,
+            terminal_reward_scale=args.terminal_reward_scale,
+        )
+        bandit_values, action_counts, bandit_metrics = train_bandit(
+            env=env,
+            episodes=train_episodes,
+            config=bandit_cfg,
+            device=device,
+        )
+        bandit_path = save_bandit_artifacts(bandit_values, action_counts, bandit_metrics, bandit_cfg, Path(args.control_model_dir))
+        logging.info("Smoke bandit saved to %s", bandit_path)
         summary = run_evaluation(
             args,
             ensemble,
             device,
             ddqn_model=ddqn_model,
+            bandit_values=bandit_values,
             severity_model=severity_model,
             terminal_outcome_model=terminal_outcome_model,
         )

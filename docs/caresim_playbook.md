@@ -25,8 +25,7 @@ user-facing active entrypoint on `main` is `step_11a_caresim_train_selected_caus
 
 ```text
 Step 01-08  ICU preprocessing + cohort build        data/processed/icu_readmit/ICUdataset.csv
-Step 09a    causal state analysis                   reports/icu_readmit/step_09a_causal_states/
-Step 09b    causal action analysis                  reports/icu_readmit/step_09b_causal_actions/
+Step 09     state/action selection                 reports/icu_readmit/step_09_state_action_selection/
 Step 10a    selected RL preprocessing               data/processed/icu_readmit/rl_dataset_selected.parquet
 Step 10b    selected severity surrogate             models/icu_readmit/severity_selected/
 Step 10c    selected terminal readmission model     models/icu_readmit/terminal_readmit_selected/
@@ -265,3 +264,6 @@ The selected-set track is now the main forward path for new experiments:
 - selected severity surrogate: ready
 - selected Step 14 training: ready
 - selected Step 12 / Step 13 reward wiring: next implementation task
+
+The old `09b` causal action-analysis branch is preserved only as legacy step `21`
+under `scripts/icu_readmit/legacy/step_21_action_selection_diagnostics/`.

@@ -4,6 +4,7 @@ prepare_colab_upload.py
 Creates caresim_colab.zip containing the active selected-track ICU readmit
 source files needed for the current Google Colab notebooks, including:
   - Step 11a: selected CARE-Sim training
+  - Step 11c/12c: DAG-aware temporal world model training + evaluation
   - Step 13a: selected CARE-Sim control
   - Step 13b: selected MarkovSim control
   - Step 14: selected offline RL comparison branch
@@ -37,6 +38,17 @@ FILES_TO_ZIP = [
     os.path.join("src", "careai", "icu_readmit", "caresim", "simulator.py"),
     os.path.join("src", "careai", "icu_readmit", "caresim", "severity.py"),
     os.path.join("src", "careai", "icu_readmit", "caresim", "readmit.py"),
+    os.path.join("src", "careai", "icu_readmit", "caresim", "noncausal_dataset.py"),
+    os.path.join("src", "careai", "icu_readmit", "caresim", "noncausal_inference.py"),
+    os.path.join("src", "careai", "icu_readmit", "caresim", "noncausal_model.py"),
+    os.path.join("src", "careai", "icu_readmit", "caresim", "noncausal_simulator.py"),
+    os.path.join("src", "careai", "icu_readmit", "caresim", "noncausal_train.py"),
+    # DAG-aware temporal simulator source
+    os.path.join("src", "careai", "icu_readmit", "dagaware", "__init__.py"),
+    os.path.join("src", "careai", "icu_readmit", "dagaware", "model.py"),
+    os.path.join("src", "careai", "icu_readmit", "dagaware", "train.py"),
+    os.path.join("src", "careai", "icu_readmit", "dagaware", "ensemble.py"),
+    os.path.join("src", "careai", "icu_readmit", "dagaware", "simulator.py"),
     # Step 13 control layer
     os.path.join("src", "careai", "icu_readmit", "caresim", "control", "__init__.py"),
     os.path.join("src", "careai", "icu_readmit", "caresim", "control", "actions.py"),
@@ -65,12 +77,31 @@ FILES_TO_ZIP = [
     os.path.join("scripts", "icu_readmit", "step_14_caresim_train.py"),
     os.path.join("scripts", "icu_readmit", "step_14_caresim_train_selected.py"),
     os.path.join("scripts", "icu_readmit", "step_11a_caresim_train_selected_causal.py"),
+    os.path.join("scripts", "icu_readmit", "step_11a_caresim_train_noncausal.py"),
+    os.path.join("scripts", "icu_readmit", "step_11a_caresim_noncausal_smoke_test.py"),
+    os.path.join("scripts", "icu_readmit", "step_11c_dagaware_smoke_test.py"),
+    os.path.join("scripts", "icu_readmit", "step_11c_dagaware_train_selected_causal.py"),
     os.path.join("scripts", "icu_readmit", "step_12a_caresim_evaluate.py"),
+    os.path.join("scripts", "icu_readmit", "step_12a_caresim_evaluate_noncausal.py"),
+    os.path.join("scripts", "icu_readmit", "step_12c_dagaware_evaluate.py"),
     os.path.join("scripts", "icu_readmit", "step_13a_caresim_control.py"),
     os.path.join("scripts", "icu_readmit", "step_11b_markovsim_train.py"),
     os.path.join("scripts", "icu_readmit", "step_12b_markovsim_evaluate.py"),
     os.path.join("scripts", "icu_readmit", "step_13b_markovsim_control.py"),
+    os.path.join("scripts", "icu_readmit", "step_13c_dagaware_control.py"),
     os.path.join("scripts", "icu_readmit", "step_14_offline_selected.py"),
+    # Notebooks
+    os.path.join("notebooks", "step_11a_caresim_selected_causal_colab.ipynb"),
+    os.path.join("notebooks", "step_11a_caresim_noncausal_colab.ipynb"),
+    os.path.join("notebooks", "step_11c_dagaware_selected_causal_colab.ipynb"),
+    os.path.join("notebooks", "step_12a_caresim_selected_causal_colab.ipynb"),
+    os.path.join("notebooks", "step_12a_caresim_noncausal_colab.ipynb"),
+    os.path.join("notebooks", "step_12b_markovsim_selected_causal_colab.ipynb"),
+    os.path.join("notebooks", "step_12c_dagaware_selected_causal_colab.ipynb"),
+    os.path.join("notebooks", "step_13a_caresim_selected_colab.ipynb"),
+    os.path.join("notebooks", "step_13b_markovsim_selected_colab.ipynb"),
+    os.path.join("notebooks", "step_13c_dagaware_selected_colab.ipynb"),
+    os.path.join("notebooks", "step_14_offline_selected_colab.ipynb"),
 ]
 
 missing = []
@@ -93,10 +124,20 @@ else:
     print()
     print("Next steps:")
     print("  1. Upload caresim_colab.zip to Google Drive (anywhere, e.g. MyDrive/)")
-    print("  2. Upload the selected parquet to MyDrive/CareAI/data/")
+    print("  2. Upload the needed parquet data to MyDrive/CareAI/data/")
     print("     - rl_dataset_selected.parquet")
-    print("  3. Open the matching notebook in Colab:")
+    print("     - rl_dataset_noncausal.parquet")
+    print("  3. Upload the trained DAG-aware model folder to Drive for 12c evaluation:")
+    print("     - models/icu_readmit/dagaware_selected_causal/")
+    print("  4. Open the matching notebook in Colab:")
     print("     - notebooks/step_11a_caresim_selected_causal_colab.ipynb")
+    print("     - notebooks/step_11a_caresim_noncausal_colab.ipynb")
+    print("     - notebooks/step_11c_dagaware_selected_causal_colab.ipynb")
+    print("     - notebooks/step_12a_caresim_selected_causal_colab.ipynb")
+    print("     - notebooks/step_12a_caresim_noncausal_colab.ipynb")
+    print("     - notebooks/step_12b_markovsim_selected_causal_colab.ipynb")
+    print("     - notebooks/step_12c_dagaware_selected_causal_colab.ipynb")
+    print("     - notebooks/step_13c_dagaware_selected_colab.ipynb")
     print("     - notebooks/step_13a_caresim_selected_colab.ipynb")
     print("     - notebooks/step_13b_markovsim_selected_colab.ipynb")
     print("     - notebooks/step_14_offline_selected_colab.ipynb")

@@ -8,6 +8,7 @@ __pycache__/
 # Virtual envs
 .venv/
 .venv310/
+.smoke311/
 
 # Large/generated artifacts (keep folder structure via .gitkeep)
 data/processed/*

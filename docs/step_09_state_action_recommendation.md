@@ -10,6 +10,8 @@ Context:
   which discharge states are most relevant for readmission.
 - Step 04b now provides the stronger controllability filter:
   which actions robustly shift which states under the multivariate random-graph setup.
+- The old `09b` action-analysis branch is retained only as legacy step `21`
+  and is not a downstream dependency of the active selected-set pipeline.
 
 ## Recommended Main Set
 

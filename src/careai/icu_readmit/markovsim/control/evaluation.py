@@ -114,6 +114,7 @@ def evaluate_policies(
     policies: dict[str, PolicyFn],
     planner_config: PlannerConfig,
     rollout_steps: int,
+    terminal_stop_threshold: float,
     observation_window: int,
     uncertainty_threshold: float,
     uncertainty_penalty: float,
@@ -138,6 +139,7 @@ def evaluate_policies(
             env = MarkovSimEnvironment(
                 ensemble,
                 max_steps=rollout_steps,
+                terminal_stop_threshold=terminal_stop_threshold,
                 uncertainty_threshold=uncertainty_threshold,
                 device=device,
                 severity_model=severity_model,

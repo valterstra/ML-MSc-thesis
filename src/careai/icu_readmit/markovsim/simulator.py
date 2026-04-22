@@ -14,6 +14,7 @@ class MarkovSimEnvironment:
         self,
         ensemble: MarkovSimEnsemble,
         max_steps: int = 20,
+        terminal_stop_threshold: float = 0.5,
         uncertainty_threshold: float = 1.0,
         device: torch.device | None = None,
         severity_model: RidgeSeveritySurrogate | None = None,
@@ -22,6 +23,7 @@ class MarkovSimEnvironment:
     ):
         self.ensemble = ensemble
         self.max_steps = max_steps
+        self.terminal_stop_threshold = float(terminal_stop_threshold)
         self.uncertainty_threshold = uncertainty_threshold
         self.device = device or ensemble.device
         self.severity_model = severity_model.to(self.device) if severity_model is not None else None
@@ -72,7 +74,7 @@ class MarkovSimEnvironment:
         else:
             reward = torch.zeros(next_state.shape[0], dtype=torch.float32, device=self.device)
         terminal_prob = pred["terminal_prob"]
-        done = (terminal_prob > 0.5) | self._done
+        done = (terminal_prob > self.terminal_stop_threshold) | self._done
 
         self._step_count += 1
         if self._step_count >= self.max_steps:

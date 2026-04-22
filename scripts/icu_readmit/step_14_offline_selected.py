@@ -10,7 +10,8 @@ Compared with the old Step 11/12 branch, this script:
   - recomputes reward to match Step 13:
       dense  = handcrafted severity improvement
       terminal = terminal readmission reward model
-  - supports comparison against the Step 13 CARE-Sim DDQN and MarkovSim DDQN on held-out real data
+  - supports comparison against the Step 13 CARE-Sim DDQN, MarkovSim DDQN,
+    and DAG-aware DDQN on held-out real data
 
 Outputs:
   models/icu_readmit/offline_selected/
@@ -60,6 +61,7 @@ DEFAULT_REPORT_DIR = "reports/icu_readmit/offline_selected"
 DEFAULT_TERMINAL_MODEL_DIR = "models/icu_readmit/terminal_readmit_selected"
 DEFAULT_CARESIM_DDQN = "models/icu_readmit/caresim_control_selected_causal/ddqn_model.pt"
 DEFAULT_MARKOVSIM_DDQN = "models/icu_readmit/markovsim_control_selected_causal/ddqn_model.pt"
+DEFAULT_DAGAWARE_DDQN = "models/icu_readmit/dagaware_control_selected_causal/ddqn_model.pt"
 
 WINDOW_LEN = 5
 N_ACTIONS = 32
@@ -89,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--terminal-model-dir", default=DEFAULT_TERMINAL_MODEL_DIR)
         p.add_argument("--caresim-ddqn-path", default=DEFAULT_CARESIM_DDQN)
         p.add_argument("--markovsim-ddqn-path", default=DEFAULT_MARKOVSIM_DDQN)
+        p.add_argument("--dagaware-ddqn-path", default=DEFAULT_DAGAWARE_DDQN)
         p.add_argument("--severity-mode", choices=["handcrafted", "surrogate"], default="handcrafted")
         p.add_argument("--severity-model-dir", default="models/icu_readmit/severity_selected")
         p.add_argument("--terminal-reward-scale", type=float, default=15.0)
@@ -499,6 +502,15 @@ def run_eval(args, device: torch.device) -> None:
         )
     else:
         logging.warning("MarkovSim DDQN checkpoint not found: %s -- skipping markovsim_ddqn comparison", args.markovsim_ddqn_path)
+    if os.path.exists(args.dagaware_ddqn_path):
+        policy_models["dagaware_ddqn"] = _load_any_ddqn(
+            args.dagaware_ddqn_path,
+            device=device,
+            fallback_obs_dim=summary["obs_dim"],
+            fallback_n_actions=N_ACTIONS,
+        )
+    else:
+        logging.warning("DAG-aware DDQN checkpoint not found: %s -- skipping dagaware_ddqn comparison", args.dagaware_ddqn_path)
 
     results: dict[str, dict] = {
         "meta": {
@@ -554,6 +566,7 @@ def main() -> None:
     args.terminal_model_dir = resolve_repo_path(args.terminal_model_dir)
     args.caresim_ddqn_path = resolve_repo_path(args.caresim_ddqn_path)
     args.markovsim_ddqn_path = resolve_repo_path(args.markovsim_ddqn_path)
+    args.dagaware_ddqn_path = resolve_repo_path(args.dagaware_ddqn_path)
     args.severity_model_dir = resolve_repo_path(args.severity_model_dir)
     args.log = resolve_repo_path(args.log)
 

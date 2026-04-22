@@ -15,6 +15,7 @@ class PlannerConfig:
     gamma: float = 0.99
     uncertainty_penalty: float = 0.25
     max_steps: int = 5
+    terminal_stop_threshold: float = 0.5
     uncertainty_threshold: float = 1.0
 
 
@@ -39,6 +40,7 @@ def planner_action(
         env = MarkovSimEnvironment(
             ensemble,
             max_steps=max(config.max_steps, config.horizon),
+            terminal_stop_threshold=config.terminal_stop_threshold,
             uncertainty_threshold=config.uncertainty_threshold,
             device=device,
         )
